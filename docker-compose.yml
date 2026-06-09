@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sa_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smartattend
+      POSTGRES_USER: smartattend
+      POSTGRES_PASSWORD: smartattend_secret
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/config/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:                          # ← добавь это
+      test: ["CMD-SHELL", "pg_isready -U smartattend -d smartattend"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    container_name: sa_redis
+    restart: unless-stopped
+    ports: ["6379:6379"]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sa_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy   # ← ждёт пока БД реально готова
+      redis:
+        condition: service_started
+    env_file: ./backend/.env
+    ports: ["3000:3000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sa_web
+    restart: unless-stopped
+    depends_on: [backend]
+    ports: ["5173:80"]
+
+volumes:
+  postgres_data:
