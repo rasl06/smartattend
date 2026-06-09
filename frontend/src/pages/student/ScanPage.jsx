@@ -4,6 +4,17 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { scanAttendance, clearScanResult } from '../../store/slices/attendanceSlice';
 import { notify } from '../../store/slices/notifySlice';
 
+function extractClassId(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return '';
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.class_id || '';
+  } catch {
+    return '';
+  }
+}
+
 export default function ScanPage() {
   const dispatch = useDispatch();
   const { loading, scanResult, error } = useSelector((s) => s.attendance);
@@ -14,9 +25,7 @@ export default function ScanPage() {
 
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
+      if (scannerRef.current) scannerRef.current.stop().catch(() => {});
       dispatch(clearScanResult());
     };
   }, [dispatch]);
@@ -31,18 +40,13 @@ export default function ScanPage() {
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          try {
-            const data = JSON.parse(decodedText);
-            setForm({ token: data.token || decodedText, classId: data.classId || '' });
-            stopScan();
-          } catch {
-            setForm({ token: decodedText, classId: '' });
-            stopScan();
-          }
+          const classId = extractClassId(decodedText);
+          setForm({ token: decodedText, classId });
+          stopScan();
         },
         () => {}
       );
-    } catch (err) {
+    } catch {
       setCameraError('Не удалось открыть камеру. Разрешите доступ в браузере.');
       setScanning(false);
     }
@@ -69,7 +73,7 @@ export default function ScanPage() {
   return (
     <div>
       <h1 className="page-title">Сканирование QR-кода</h1>
-      <p className="page-subtitle">Отметьте посещаемость через камеру или вручную</p>
+      <p className="page-subtitle">Наведите камеру на QR-код преподавателя</p>
 
       <div style={{ maxWidth: 520 }}>
         {scanResult && (
@@ -105,38 +109,32 @@ export default function ScanPage() {
           )}
           <div id="qr-reader" style={{ width: '100%', marginBottom: '1rem' }}></div>
           {!scanning ? (
-            <button className="btn btn-primary" onClick={startScan} style={{ width: '100%', justifyContent: 'center' }}>
+            <button className="btn btn-primary" onClick={startScan}
+              style={{ width: '100%', justifyContent: 'center' }}>
               Открыть камеру
             </button>
           ) : (
-            <button className="btn" onClick={stopScan} style={{ width: '100%', justifyContent: 'center' }}>
+            <button className="btn" onClick={stopScan}
+              style={{ width: '100%', justifyContent: 'center' }}>
               Остановить
             </button>
           )}
         </div>
 
-        <div className="card">
-          <h3 style={{ fontWeight: 700, marginBottom: '1rem' }}>Ввести вручную</h3>
-          <form onSubmit={handleScan} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label">ID занятия (classId)</label>
-              <input className="input" value={form.classId}
-                onChange={(e) => setForm({ ...form, classId: e.target.value })}
-                placeholder="UUID занятия" required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">QR-токен</label>
-              <textarea className="input" value={form.token} rows={3}
-                onChange={(e) => setForm({ ...form, token: e.target.value })}
-                placeholder="eyJ..." required
-                style={{ resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }} />
-            </div>
-            <button className="btn btn-primary" type="submit" disabled={loading}
-              style={{ width: '100%', justifyContent: 'center' }}>
-              {loading ? 'Проверка...' : '⊡ Подтвердить присутствие'}
-            </button>
-          </form>
-        </div>
+        {form.token && (
+          <div className="card">
+            <h3 style={{ fontWeight: 700, marginBottom: '1rem' }}>✅ QR отсканирован</h3>
+            <p style={{ fontSize: '0.875rem', color: 'var(--gray-500)', marginBottom: '1rem' }}>
+              Занятие определено автоматически. Нажмите кнопку для подтверждения.
+            </p>
+            <form onSubmit={handleScan}>
+              <button className="btn btn-primary" type="submit" disabled={loading}
+                style={{ width: '100%', justifyContent: 'center' }}>
+                {loading ? 'Проверка...' : '⊡ Подтвердить присутствие'}
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
